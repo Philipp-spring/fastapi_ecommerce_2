@@ -303,7 +303,6 @@ async def update_product(
     await db.refresh(db_product)
     return db_product
 
-!
 
 
 

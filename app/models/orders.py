@@ -17,7 +17,7 @@ class Order(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
-    total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0, nullable=False) ))
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

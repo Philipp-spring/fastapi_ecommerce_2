@@ -16,7 +16,7 @@ class CategoryCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=50,
                       description="Название категории (3-50 символов)")
     parent_id: int | None = Field(None, description="ID родительской категории, если есть")
-                         e
+
 
 class Category(BaseModel):
     """
