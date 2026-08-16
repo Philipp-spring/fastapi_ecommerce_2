@@ -1,42 +1,34 @@
 # Модели Pydantic (валидируют входные и выходные данные)
 
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, SecretStr, ValidationError # ConfigDict (в переводе «словарь конфигурации») — это специальный класс-инструмент в библиотеке Pydantic v2, который используется для глобальной настройки поведения Pydantic-модели. С его помощью вы управляете тем, как модель должна проверять (валидировать), очищать и форматировать данные.
-from decimal import Decimal                                                             # SecretStr - Когда вы оборачиваете пароль в тип SecretStr, Pydantic намертво «закрывает» этот текст от внешнего мира, превращая его в объект-сейф. Этот сейф умышленно скрывает данные при любых стандартных операциях (печать в консоль, логирование, превращение в словарь). Единственный способ открыть этот сейф и достать оттуда исходную строку — явно вызвать метод .get_secret_value()
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, SecretStr, ValidationError
+from decimal import Decimal
 from datetime import datetime
 from sqlalchemy import Numeric
 from fastapi import Form
 from typing import Annotated
 from fastapi.exceptions import RequestValidationError
 
-class CategoryCreate(BaseModel): # BaseModel — это базовый класс из библиотеки Pydantic.
+class CategoryCreate(BaseModel):
     """
     Модель для создания и обновления категории.
     Используется в POST и PUT запросах.
     """
     name: str = Field(..., min_length=3, max_length=50,
-                      description="Название категории (3-50 символов)") # (обязательное)
-    parent_id: int | None = Field(None, description="ID родительской категории, если есть") # (необязательное).  parent_id - указывает идентификатор родительской категории для поддержки вложенных категорий, таких как "Смартфоны" внутри "Электроника". Это поле необязательное и может быть None, если категория является корневой. (Вложенность поддерживается за счет того, что категории «ссылаются» друг на друга внутри одной таблицы. Это похоже на семейное древо, где у каждого ребенка записан ID его родителя)
-#                         default=None
+                      description="Название категории (3-50 символов)")
+    parent_id: int | None = Field(None, description="ID родительской категории, если есть")
+                         e
 
 class Category(BaseModel):
     """
     Модель для ответа с данными категории.
     Используется в GET-запросах.
     """
-    id: int = Field(..., description="Уникальный идентификатор категории") # (обязательное). (добавляется сервером)
+    id: int = Field(..., description="Уникальный идентификатор категории")
     name: str = Field(..., description="Название категории")
-    parent_id: int | None = Field(None, description="ID родительской категории, если есть") # (добавляется сервером)
-    is_active: bool = Field(..., description="Активность категории") # (добавляется сервером)  is_active (обычно типа bool — логическое да/нет) используется для так называемого «мягкого удаления» (Soft Delete) или временной деактивации элементов без их физического стирания из базы данных. (1. Временное скрытие товаров и категорий, 2. Сохранение истории заказов 3. SEO-оптимизация)
+    parent_id: int | None = Field(None, description="ID родительской категории, если есть")
+    is_active: bool = Field(..., description="Активность категории")
 
-    model_config = ConfigDict(from_attributes=True) # from_attributes (из атрибутов) - обычно pydantic читает данные из словаря(который создается в оперативной памяти в момент обработки запроса). Но этой командой мы говорим ему читать данные из атрибутов объекта (через точку)(например, из моделей SQLAlchemy ORM), чтобы получить данные из ORM-модели (например, ОБЪЕКТ(модель?) таблицы из SQLAlchemy) в которой данные хранятся именно в таком виде.
-# По умолчанию Pydantic умеет работать только со стандартными структурами Python — словарями (dict), списками или кортежами. То есть он ожидает, что данные будут приходить в виде: category['name'].
-# Объекты баз данных (модели)(классы ORM вроде SQLAlchemy) устроены иначе. Доступ к их полям происходит через точку (как к атрибутам класса): category.name
-# Включая from_attributes=True, вы говорите Pydantic: «Если тебе передадут не словарь, а объект базы данных, не паникуй. Просто читай его поля через точку (.), как обычные атрибуты, и собирай из них JSON».
-
-# ConfigDict(from_attributes=True) - позволяет преобразовывать объекты SQLAlchemy в Pydantic-модели(готовые_обхекты_с_данными) для ответа.
-# Pydantic-модель в Python-коде - это чертёж/шаблон
-# CategoryCreate — это как «форма» для заполнения новой категории
-# Category — это «готовая карточка» с данными из базы
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductCreate(BaseModel):
     """
@@ -44,114 +36,82 @@ class ProductCreate(BaseModel):
     Используется в POST и PUT запросах.
     """
     name: str = Field(..., min_length=3, max_length=100,
-                      description="Название товара (3-100 символов)") # (обязательное)
+                      description="Название товара (3-100 символов)")
     description: str | None = Field(None, max_length=500,
-                                       description="Описание товара (до 500 символов)") # (необязательное)
-    price: Decimal = Field(..., gt=0, description="Цена товара (больше 0)", decimal_places=2) # (обязательное)   decimal_places=2 указывает количество знаков (цифр) после запятой
+                                       description="Описание товара (до 500 символов)")
+    price: Decimal = Field(..., gt=0, description="Цена товара (больше 0)", decimal_places=2)
     # image_url: str | None = Field(None, max_length=200, description="URL изображения товара") # (необязательное)
-    stock: int = Field(..., ge=0, description="Количество товара на складе (0 или больше)") # (обязательное)
-    category_id: int = Field(..., description="ID категории, к которой относится товар") # (обязательное)
+    stock: int = Field(..., ge=0, description="Количество товара на складе (0 или больше)")
+    category_id: int = Field(..., description="ID категории, к которой относится товар")
 
-    # Метод as_form это паттерн FastAPI, который позволяет использовать Pydantic-модель в multipart/form-data, как если бы она была обычной формой. Без него FastAPI не умеет автоматически парсить Form-поля в Pydantic-объект
-    # multipart/form-data — это специальный формат кодирования HTTP-запроса, который используется для одновременной отправки текстовых полей и тяжелых бинарных файлов (картинок, документов, видео). (Обычный JSON (application/json) для этого не подходит, так как он предназначен только для текста.)
-    # Когда фронтенд отправляет форму с товаром и картинкой, браузер разбивает тело запроса на отдельные части (отсюда слово multi-part), разделяя их уникальной текстовой границей (boundary).
 
-    @classmethod # вызывается ProductCreate.as_form(). (Метод "as_form" можно сделать обычным методом вне класса, будет работать так же)
-    def as_form(cls, # <---запрос от клиента идёт сюда (cls = ProductCreate) ("cls" ссылается на тот класс, в котором она находится, т.к. помечено декоратором @classmethod)
-                name: Annotated[str, Form(...)], # записываются переменные
-                price: Annotated[Decimal, Form(...)], # Мы оборачиваем каждое поле в Form(...), чтобы FastAPI знал, что это не JSON, а форм-данные(multipart/form-data).
-                stock: Annotated[int, Form(...)],
-                category_id: Annotated[int, Form(...)], # здесь НЕ ПРИНИМАЕТСЯ картинка, дело в том, что всё летит в одном единственном multipart-потоке, и текстовые поля товара (name, price и т.д.) находятся внутри той же самой multipart-формы, что и картинка.
-                description: Annotated[str | None, Form()] = None,  # name, price и image лежат внутри одного пакета формы. as_form с Form(...) - это вынужденный «мостик». Своими аргументами name: Annotated[str, Form(...)] он заставляет FastAPI переключить парсер и найти нужные переменные в multipart/form-data
-                ) -> "ProductCreate":
-        # try: #<--если Буквы вместо чисел ➔ Ошибка типов (FastAPI) ➔ HTTP 422(ВСЁ ОК)(Необрабатываемый объект), а если Правильные типы, НО плохая логика (минусы, короткий текст) ➔ Ошибка бизнес-правил (Pydantic в cls(...)) ➔ Без try-except превращается в HTTP 500. (НО МОЖНО ПРОСТО ПРОДУБЛИРОВАТЬ ПРОВЕРКИ ВРОДЕ (min_length=3, max_length=100) внутри "as_form")
-        return cls( # собирает все поля и возвращает валидированный экземпляр ProductCreate (класс в котором он же (метод "as_form" и находится))
-            name=name,                      # Запускается создание объекта ProductCreate
-            description=description,        # Включаются все наши правила валидации Pydantic (min_length=3, gt=0, decimal_places=2 и т.д.).
+
+    @classmethod
+    def as_form(cls,
+        name: Annotated[str, Form(...)],
+        price: Annotated[Decimal, Form(...)],
+        stock: Annotated[int, Form(...)],
+        category_id: Annotated[int, Form(...)],
+        description: Annotated[str | None, Form()] = None,
+    ) -> "ProductCreate":
+        return cls(
+            name=name,
+            description=description,
             price=price,
-            stock=stock,                    # Annotated[str, Form(...)] - позволяет использовать одну и ту же модель ProductCreate в двух режимах: 1. И как обычный JSON в эндпоинтах (потому что наверху объявлен стандартный Field). 2. И как Форму, если вызвать ее через Depends(ProductCreate.as_form)
-            category_id=category_id,        # А если указывать в "as_form" старым способом: name: str = Form(...), то и верхней части, нужно будет указывать не Field(), а Form(), что лишает нас использовать использовать одну и ту же модель ProductCreate в двух режимах
-            )
-        # except ValidationError as e: # ValidationError - не имеет никакого HTTP-кода. Этот блок перехватывает ошибку, если Pydantic не смог собрать модель (например, в поле price вместо числа передали текст "дорого", или имя товара оказалось слишком коротким). В переменную e записывается весь объект ошибки с подробностями.
-        #     # превратит в стандартный fastapi-ответ 422 (RequestValidationError - HTTP-код - 422)
-        #     raise RequestValidationError(e.errors()) from e # ValidationError.errors() - Метод Pydantic, который возвращает список словарей (List of Dicts) со всеми деталями: какое именно поле сломалось, почему оно сломалось и какое сообщение нужно показать. Класс RequestValidationError из FastAPI в качестве первого аргумента строго ожидает список (List) с описанием ошибок.
-# RequestValidationError — это встроенный класс ошибки (исключения) в самом фреймворке FastAPI.
-# FastAPI по умолчанию умеет красиво обрабатывать (генерировать HTTP 422 JSON) только ошибки типа RequestValidationError. Обычный ValidationError от Pydantic он превратит в HTTP 500 (Internal Server Error), так как посчитает это внутренней ошибкой сервера. Передавая e.errors() внутрь RequestValidationError, вы «притворяетесь» перед FastAPI, будто эта ошибка произошла на этапе автоматического разбора параметров запроса.
-# from e  -  стандартный синтаксис Python для сохранения цепочки исключений (Exception Chaining). Он говорит интерпретатору: «Я поднимаю новую ошибку RequestValidationError, но её первопричиной была ошибка ValidationError». Это критически важно для отладки — в логах терминала вы увидите полную историю того, почему упал код.
+            stock=stock,
+            category_id=category_id,
+        )
 
 
-# Валидация остаётся в Pydantic — min_length=3, gt=0, decimal_places=2 и т.д.
-# Swagger UI показывает красивую форму с отдельными полями, а не JSON-строку.
-# Код становится более чистым, так как мы не будем писать Form(...) в каждом эндпоинте, а выносим всё в модель.
-# Более масштабируемо, если мы добавим новое поле, то меняем только as_form, а не все эндпоинты.
 
-# Код становится более чистым, так как мы не будем писать Form(...) в каждом эндпоинте, а выносим всё в модель (ProductCreate.as_form). Это также более масштабируемо, если мы добавим новое поле, то меняем только as_form, а не все эндпоинты.
-
-# Этот класс выполняет две работы в разное время.
-# 1. Верхняя часть (поля name: str = Field(...) и т.д.) — это ЭТАЛОН (ПРАВИЛА). Она говорит: «Любой товар в моей системе обязан иметь имя от 3 символов, цену больше 0 и т.д.».
-# 2. Нижняя часть (метод as_form) — это ПЕРЕВОДЧИК (СБОРЩИК). Он нужен только для того, чтобы поймать данные из интернета, когда они летят в формате формы, а не JSON.
-
-# Объединить всё в одной Pydantic-схеме(без ) НЕЛЬЗЯ, так как:
-# Конструктор Field() из Pydantic и функция Form() из FastAPI — это абсолютно разные инструменты, которые создавались для разных задач и не умеют работать внутри одной переменной
-
-# ValidationError — это ошибка валидации (проверки) данных (встроенная в библиотеку Pydantic). Она возникает, когда библиотека Pydantic проверяет переданные ей данные и понимает, что они не соответствуют правилам, которые вы описали в своей модели (в классе ProductCreate).(ошибка в самих значениях, которые пришли от пользователя или из формы)
 
 class Product(BaseModel):
     """
     Модель для ответа с данными товара.
     Используется в GET-запросах.
     """
-    id: int = Field(..., description="Уникальный идентификатор товара") # (добавляется сервером)
+    id: int = Field(..., description="Уникальный идентификатор товара")
     name: str = Field(..., description="Название товара")
     description: str | None = Field(None, description="Описание товара")
     price: Decimal = Field(..., description="Цена товара в рублях", gt=0, decimal_places=2)
     image_url: str | None = Field(None, description="URL изображения товара")
     stock: int = Field(..., description="Количество товара на складе")
     category_id: int = Field(..., description="ID категории")
-    is_active: bool = Field(..., description="Активность товара") # (добавляется сервером)
+    is_active: bool = Field(..., description="Активность товара")
     rating: float = Field(description="Рейтинг")
     created_at: datetime = Field(description="Дата создания товара")
     updated_at: datetime = Field(description="Дата обновления товара")
 
-    model_config = ConfigDict(from_attributes=True) # ConfigDict(from_attributes=True) нужен только тем моделям, которые вы будете использовать для отдачи данных из базы (для GET-запросов и ответов сервера) (ORM-объектов(SQLAlchemy)). (Чтобы наш сервер мог автоматически отправить данные из базы данных клиенту (в браузер или мобильное приложение))
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Список пагинации для товаров
-class ProductList(BaseModel): # этот класс будет использоваться в качестве "response_model" для эндпоинта GET /products
+class ProductList(BaseModel):
     """
     Список пагинации для товаров.
     """
-    items: list[Product] = Field(description="Товары для текущей страницы") #  Тип поля это список Product. Здесь будут наши товары.
-    total: int = Field(ge=0, description="Общее количество товаров") # Целое число, минимум 0 (ge=0)(>=). Это общее число всех активных товаров.
-    page: int = Field(ge=1, description="Номер текущей страницы") # Целое число, минимум 1 (ge=1). Текущая страница
-    page_size: int = Field(ge=1, description="Количество элементов на странице") # Целое, минимум 1. Размер страницы (будет использоваться как лимит).
-    # Эта схема делает ответ предсказуемым, а именно клиент знает, что получит {"items": [...], "total": 150, "page": 2, "page_size": 20}.
-    model_config = ConfigDict(from_attributes=True)  # Для чтения из ORM-объектов
+    items: list[Product] = Field(description="Товары для текущей страницы")
+    total: int = Field(ge=0, description="Общее количество товаров")
+    page: int = Field(ge=1, description="Номер текущей страницы")
+    page_size: int = Field(ge=1, description="Количество элементов на странице")
+    model_config = ConfigDict(from_attributes=True)
 
 
 
-# для ввода:                 # Для работы с полем EmailStr нужно установить следующую зависимость: pip install 'pydantic[email]' - это специальный способ установки Pydantic, который автоматически скачивает дополнительную библиотеку email-validator
-class UserCreate(BaseModel): # Field() — это инструмент декларации (описания) правил и метаданных для конкретного поля
-    email: EmailStr = Field(description="Email пользователя") # Тип данных EmailStr автоматически проверяет (валидирует) строку на соответствие корректному формату электронной почты (например, наличие @ и домена)
+# для ввода:
+class UserCreate(BaseModel):
+    email: EmailStr = Field(description="Email пользователя")
     password: SecretStr = Field(min_length=8, description="Пароль (минимум 8 символов)")
-    role: str = Field(default="buyer", pattern="^(buyer|seller|admin)$", description="Роль: 'buyer' или 'seller'") # Параметр pattern= в библиотеке Pydantic принимает строку, которая является ИСКЛЮЧИТЕЛЬНО регулярным выражением (Regular Expression или Regex).
-    # необязательное, по умолчанию - "buyer"
-    # pattern="^(buyer|seller)$" - Это регулярное выражение (Regex), которое разрешает принимать только два конкретных текстовых значения: "buyer" (покупатель) или "seller" (продавец). Любая другая строка вызовет ошибку валидации.
-# ^ (Карет / Крышка) — означает начало строки. Гарантирует, что перед проверяемым словом нет других символов или пробелов
-# () (Круглые скобки) — создают группу захвата. Они объединяют варианты внутри себя, чтобы применить к ним логическое «ИЛИ».
-# $ (Знак доллара) — означает конец строки. Гарантирует, что после слова больше ничего нет.
+    role: str = Field(default="buyer", pattern="^(buyer|seller|admin)$", description="Роль: 'buyer' или 'seller'")
+
 
 # для вывода:
 class User(BaseModel):
-    id: int         # отдаём_клиенту: id
+    id: int
     email: EmailStr
-    is_active: bool # отдаём_клиенту: активация
+    is_active: bool
     role: str
-    model_config = ConfigDict(from_attributes=True) # заставляет эту Pydantic-схему принимать не только обычные словари (dict), но и живые объекты базы данных (объекты ORM), ну а потом это все сериализоваться будет  в JSON. (модель можно собирать не только из словаря, но и из объекта с атрибутами, тем самым позволяя преобразовывать объекты SQLAlchemy в Pydantic модели)
-# поля автоматически обязательные
-# тут нет поля "password" - хэш пароля или сам пароль категорически нельзя отдавать обратно в JSON, иначе его перехватят
-
-# ЗДЕСЬ НЕТ поля "hashed_password", и поэтому оно будет просто ИГНОРИРОВАТЬСЯ при проверке (Это поведение по умолчанию для Pydantic моделей)
+    model_config = ConfigDict(from_attributes=True)
 
 
 
@@ -164,10 +124,10 @@ class RefreshTokenRequest(BaseModel):
 
 class ReviewCreate(BaseModel):
     product_id: int = Field(description="Уникальный идентификатор продукта")
-    comment: str | None = Field(description="Текст отзыва")   # <--пользователь может и не вводить текст отзыва
+    comment: str | None = Field(description="Текст отзыва")
     grade: Decimal = Field(ge=1, le=5, description="Оценка")
 
-# Поля id, comment_date, is_active - создаются на стороне сервера АВТОМАТИЧЕСКИ благодаря "default" и PostgreSQL (в связке с asyncpg + SQLAlchemy)
+
 
 class Review(BaseModel):
     id: int = Field(description="Уникальный идентификатор отзыва")
@@ -178,112 +138,51 @@ class Review(BaseModel):
     grade: Decimal = Field(ge=1, le=5, description="Оценка")
     is_active: bool = Field(description="Активность отзыва")
 
-    model_config = ConfigDict(from_attributes=True) # Позволяет Pydantic автоматически читать данные из объектов SQLAlchemy (ORM)
-
-# ConfigDict(from_attributes=True) - эта настройка нужна только на выходе — то есть для схем, которые отдают данные клиенту (Response-схемы).
-# Для схем на вход (например, создание товара ProductCreate) эта настройка не нужна, так как входные данные всегда приходят в виде обычного JSON (словаря Python).
+    model_config = ConfigDict(from_attributes=True)
 
 
 
 # базовая модель, которая содержит минимальный набор полей, необходимых для идентификации товара и его количества в корзине.
 class CartItemBase(BaseModel):
-    product_id: int = Field(description="ID товара") # поле указывает на конкретный товар в каталоге
-    quantity: int = Field(ge=1, description="Количество товара") #  сколько единиц этого товара пользователь хочет добавить или обновить
-# Эта модель используется как ОСНОВА, что позволяет избежать дублирования кода и поддерживать консистентность валидации.
+    product_id: int = Field(description="ID товара")
+    quantity: int = Field(ge=1, description="Количество товара")
 
 
-class CartItemCreate(CartItemBase): # наследуется от CartItemBase, но не добавляет новых полей (Это сделано намеренно: при добавлении товара в корзину нам нужны те же данные, что и в базовой модели — product_id и quantity)
+
+class CartItemCreate(CartItemBase): # наследуется от CartItemBase, но не добавляет новых полей
     """Модель для добавления нового товара в корзину."""
     pass
-# Наследование позволяет использовать одну и ту же логику валидации, но при этом семантически разделить входные данные для операции создания.
-# В будущем, если потребуется добавить дополнительные параметры (например, replace_quantity: bool — заменить текущее количество, а не прибавить), мы сможем сделать это, не меняя другие модели.
-# Это также улучшает читаемость кода и документацию в Swagger: разработчик сразу видит, что POST /cart/itemsожидает именно эту схему.
+
 
 
 # При обновлении товара в корзине (PUT /cart/items/{product_id}) идентификатор товара передаётся в URL, а не в теле запроса. Поэтому в теле запроса нужен только quantity.
 class CartItemUpdate(BaseModel):
     """Модель для обновления количества товара в корзине."""
-    quantity: int = Field(..., ge=1, description="Новое количество товара")   # <---обновляет только количество
-# Отдельная модель позволяет Pydantic валидировать только это поле, не требуя product_id. Это также предотвращает ошибки: если бы мы использовали CartItemCreate, клиент мог бы случайно передать другой product_id, что привело бы к путанице или уязвимости
-# Поскольку сервер благодаря URL уже точно знает(по пути), какой именно товар мы обновляем, внутри тела запроса передавать product_id еще раз просто бессмысленно и может вызвать конфликт данных (Уязвимость).
-# Если программист невнимательно написал код базы данных и обновил товар, взяв ID из тела запроса (payload.product_id), то произойдет взлом: пользователь зашел на страницу Айфона, а в базе данных переписал количество у Ноутбука, за который он даже не платил!
-# Это называется Id Mutation (подмена идентификатора). Хакеры часто меняют циферки в JSON-пакетах, чтобы посмотреть, не ошибся ли разработчик в логике.
+    quantity: int = Field(..., ge=1, description="Новое количество товара")
+
+
 
 # ВЫХОДНАЯ модель, которая представляет полную информацию о товаре в корзине
 class CartItem(BaseModel):
     """Товар в корзине с данными продукта."""
-    id: int = Field(..., description="ID позиции корзины") # уникальный идентификатор записи в таблице cart_items.
-    quantity: int = Field(..., ge=1, description="Количество товара") # ge=1 - Доп проверка, чтобы не отдавать клиенту неконсистентные данные (0, -1) из-за багов, гонки. И при этом явно задокументировать контракт в OpenAPI (что quantity всегда больше 1)
-    product: Product = Field(..., description="Информация о товаре") # вложенная модель с полной информацией о товаре (название, цена, фото и т.д.).
-                                                                     # колонка ---идет_в---> product: Mapped["Product"] = relationship("Product", back_populates="cart_items")   <----забирает оттуда связанный объект товара и превращает его во вложенную Product.  (с помощью  model_config = ConfigDict(from_attributes=True) сериализует её в Pydantic-модель)
-    model_config = ConfigDict(from_attributes=True)                  # остальные поля игнорируются
+    id: int = Field(..., description="ID позиции корзины")
+    quantity: int = Field(..., ge=1, description="Количество товара")
+    product: Product = Field(..., description="Информация о товаре")
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 
 # ГЛАВНАЯ ВЫХОДНАЯ модель, которая представляет всю корзину пользователя
 class Cart(BaseModel):
     """Полная информация о корзине пользователя."""
-    user_id: int = Field(..., description="ID пользователя")       # default_factory= - если данных нет, создаётся НОВЫЙ пустой список для каждого объекта "Cart" (при условии, что забыли указать items). В этой модели default_factory=list не обязателен, потому что items всегда приходит из SQLAlchemy и передаётся явно. Но обычно стараются добавлять такие защитные дефолты на случай неполных данных, чтобы не вызывать ошибку валидации. Например при ошибках загрузки данных из БД у нас cart.items может быть как [], так и None, а с default_factory=list мы гарантируем что будет в ответе пустой список "items": [], а не "items": null. Да и в тестах такие модели использовать удобнее.
-    items: list[CartItem] = Field(default_factory=list, description="Содержимое корзины") # список вложенных моделей CartItem. Cодержит список объектов типа CartItem. Каждый элемент списка это полноценная модель, содержащая: id, quantity, product (ещё одна вложенная модель Product)
-    total_quantity: int = Field(..., ge=0, description="Общее количество товаров") # сумма всех quantity (количеств)
+    user_id: int = Field(..., description="ID пользователя")
+    items: list[CartItem] = Field(default_factory=list, description="Содержимое корзины")
+    total_quantity: int = Field(..., ge=0, description="Общее количество товаров")
     total_price: Decimal = Field(..., ge=0, description="Общая стоимость товаров")
 
     model_config = ConfigDict(from_attributes=True)
 
-
-# В формате JSON это выглядит примерно вот так:
-# {
-#   "user_id": 1,
-#   "items": [
-#     {
-#       "id": 101,
-#       "quantity": 2,
-#       "product": {                                <-----SQLAlchemy и Pydantic полностью автоматизируют сборку JSON
-#         "id": 10,
-#         "name": "Наушники Sony",
-#         "price": 4990.00,
-#         "image_url": "http://...",
-#         "stock": 50
-#       }
-#     }
-#   ],
-#   "total_quantity": 2,
-#   "total_price": 9980.00
-# }
-
-
-# То есть когда мы возвращаем:
-# return Cart(
-#     user_id=user.id,
-#     items=cart_items,  # список ORM-объектов
-#     total_quantity=...,
-#     total_price=...
-# )
-
-
-
-# Pydantic:
-# 1. Берёт каждый cart_item из items
-# 2. Превращает его в CartItem (через from_attributes=True)     <---это значит, что Pydantic берёт из БД (ORM-модель) и сериализует в Pydantic-модель (каждое поле используя обычное обращение через точку "."  --->  (CartItem.id, CartItem.quantity, CartItem.product)
-# 3. Внутри CartItem превращает cart_item.product в Product
-# 4. Собирает всё в валидный JSON
-
-# Использование default_factory=list очень важно в данном случае: без этого все экземпляры Cart делили бы один и тот же список items, что привело бы к ошибкам.
-# А через default_factory создаётся новый пустой список при каждом создании объекта.
-
-# default= (Фиксированное значение) - Используется для простых, неизменяемых типов данных (числа, строки, логические значения).
-# default_factory= — (Динамическое создание / "Фабрика")
-# В него передается не само значение, а функция (или класс), которую Pydantic должен запустить (вызвать), чтобы сгенерировать значение по умолчанию в тот момент, когда создается новый объект.
-
-# Если бы вы написали default=[], все корзины в приложении использовали бы один и тот же список в памяти компьютера, перезаписывая данные друг друга.
-
-# В Python есть железное правило: значения по умолчанию для классов создаются ровно один раз — в момент запуска сервера (импорта файла).
-# В момент, когда вы запустили команду uvicorn (или docker compose up), Python читает этот файл, видит квадратные скобки [], выделяет под них одну конкретную ячейку в оперативной памяти (например, с адресом 0x123) и намертво привязывает её к этому полю класса Cart.
-# Когда вы просто валидируете входящий JSON, в котором есть товары, Pydantic заменяет дефолтное значение новыми данными. Здесь всё хорошо.
-# Но представьте, что два разных пользователя открыли свои пустые корзины:
-# - Заходит Пользователь №1. В базе у него пусто. Pydantic валидирует объект Cart и, так как данных нет, подставляет ему тот самый список из ячейки 0x123.
-# - Заходит Пользователь №2. У него тоже пусто. Pydantic снова подставляет ему тот же самый список из ячейки 0x123.
-# ока они просто смотрят на пустые корзины, всё нормально. Но как только вы (или код вашей программы) попытаетесь как-то изменить этот список в памяти (например, сделать .append() или как-то иначе его задействовать в коде до превращения в JSON), вы рискуете тем, что изменения одного пользователя отобразятся у другого. Они начинают делить один физический список на двоих.
 
 
 
@@ -295,7 +194,7 @@ class OrderItem(BaseModel):
     quantity: int = Field(..., ge=1, description="Количество")
     unit_price: Decimal = Field(..., ge=0, description="Цена за единицу на момент покупки")
     total_price: Decimal = Field(..., ge=0, description="Сумма по позиции")
-    product: Product | None = Field(None, description="Полная информация о товаре") # вложенный объект Product
+    product: Product | None = Field(None, description="Полная информация о товаре")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -309,16 +208,16 @@ class Order(BaseModel):
     total_amount: Decimal = Field(..., ge=0, description="Общая стоимость")
     created_at: datetime = Field(..., description="Когда заказ был создан")
     updated_at: datetime = Field(..., description="Когда последний раз обновлялся")
-    items: list[OrderItem] = Field(default_factory=list, description="Список позиций") # список с позициями_заказов
+    items: list[OrderItem] = Field(default_factory=list, description="Список позиций")
 
     model_config = ConfigDict(from_attributes=True)
 
 
 
 
-# Все заказы текущего пользователя (обёртка для пагинированных списков заказов) возвращается в GET /orders
+# Все заказы текущего пользователя
 class OrderList(BaseModel):
-    items: list[Order] = Field(..., description="Заказы на текущей странице") # список заказов (пагинация)
+    items: list[Order] = Field(..., description="Заказы на текущей странице")
     total: int = Field(ge=0, description="Общее количество заказов")
     page: int = Field(ge=1, description="Текущая страница")
     page_size: int = Field(ge=1, description="Размер страницы")

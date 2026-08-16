@@ -5,19 +5,19 @@ from sqlalchemy import select, update, func, desc, asc, or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.models import Product as ProductModel                   # ORM-модель
-from app.schemas import ProductCreate, Product as ProductSchema, ProductList  # Pydantic-модель
+from app.models import Product as ProductModel
+from app.schemas import ProductCreate, Product as ProductSchema, ProductList
 from app.db_depends import get_db
 
-from app.models.users import User as UserModel # ORM-модель
-from app.auth import get_current_seller # функция проверки роли продавца (seller)
+from app.models.users import User as UserModel
+from app.auth import get_current_seller
 
-from app.models import Category as CategoryModel  # ORM-модель(Категорий)
+from app.models import Category as CategoryModel
 
-from sqlalchemy.ext.asyncio import AsyncSession # (асинхронный аналог Session)
-from app.db_depends import get_async_db # функция-зависимость предоставляющая асинхронную сессию
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db_depends import get_async_db
 
-from enum import Enum  #  (сокращение от Enumeration — перечисление) — класс, который используется для создания ФИКСИРОВАННЫХ наборов неизменяемых констант. (Enum нужен тогда, когда у переменной может быть только несколько строго определенных текстовых или числовых значений, и никакие другие туда передавать нельзя.) например у светофора может быть только 3 цвета
+from enum import Enum
 
 
 from pathlib import Path
@@ -26,84 +26,53 @@ import uuid
 
 
 # КОНСТАНТЫ:
-BASE_DIR = Path(__file__).resolve().parent.parent.parent # BASE_DIR - Абсолютный путь к корню проекта, вычисленный от текущего файла. Нужен, чтобы в дальнейшем можно было найти файл по относительному пути. Path(__file__) это путь к текущему файлу (products.py), а .resolve() абсолютный путь (без .., без символических ссылок) и .parent.parent.parent  поднимаемся на три уровня вверх, то есть корень проекта
-# Path(__file__) — определяет, где лежит сам запущенный файл: S:/fastapi_ecommerce   И делает 3 шага назад       __file__ — это встроенная системная переменная в Python, которая автоматически создается для каждого файла. Она хранит в себе полный путь к тому файлу, в котором этот код сейчас написан.
-# .resolve() — делает путь «чистым» (абсолютным), убирая любые скрытые символические ссылки или переходы вроде ../      .parent - возвращает родительскую папку для текущей папки
-# Path(__file__)        — файл products.py                                      (S:/fastapi_ecommerce/app/routers/products.py)
-# .parent (1-й уровень) — убирает /products.py                                  (S:/fastapi_ecommerce/app/routers/)
-# .parent (2-й уровень) —  убирает /routers                                     (S:/fastapi_ecommerce/app/)
-# .parent (3-й уровень) —  убирает /app                                         (S:/fastapi_ecommerc)
-MEDIA_ROOT = BASE_DIR / "media" / "products" # (S:/fastapi_ecommerce\media\products) MEDIA_ROOT - физическая папка на диске(корень), куда сохраняются все изображения товаров.
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True) #  .mkdir(parents=True, exist_ok=True) - создаёт папку, если её нет. (Создаётся автоматически при старте)
-# Проверит диск S: по пути S:\Python_проекты\fastapi_ecommerce\media\products   <----MEDIA_ROOT
-# Создаст структуру: если папки media или media/products еще не были созданы вами вручную, параметр parents=True автоматически создаст их одну за другой.
-# Защитит от сбоя: благодаря exist_ok=True, если папки уже есть на месте (например, вы создали их сами или это второй запуск сервера), Python просто проигнорирует команду и двинется дальше без вылета программы.
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"} # Белый список MIME-типов. Защищает от загрузки файлов с ненужным расширением (.php, .exe, .pdf). (Принимает от пользователя только те файлы, которые есть в списке). (множество set(), т.к. скорость проверки, защита от дубликатов, )
-MAX_IMAGE_SIZE = 2 * 1024 * 1024  # 2 097 152 байт (Ограничение размера изображения)
-# 2 мегабайта * 1024 килобайта * 1024 байта
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MEDIA_ROOT = BASE_DIR / "media" / "products"
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
-# UploadFile - класс является обёрткой над низкоуровневыми механизмами, предоставляемыми Starlette (на котором построен FastAPI)
-# Экземпляр UploadFile предоставляет несколько полезных атрибутов для доступа к информации о загруженном файле:
-# filename: (строка) Оригинальное имя файла, которое было отправлено клиентом.
-# content_type: (строка) MIME-тип файла, отправленный клиентом (например, image/jpeg, application/pdf). (MIME-тип - это специальная метка (паспорт файла) в интернете, которая сообщает компьютеру и серверу, что именно находится внутри файла и как его правильно обрабатывать)
-# file: (объект файла) Это фактический файлоподобный объект (байтовый поток), из которого вы можете читать содержимое загруженного файла.
-
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGE_SIZE = 2 * 1024 * 1024
 
 # Создаём маршрутизатор для товаров
 router = APIRouter(
     prefix="/products",
-    tags=["products"], # Группирует эндпоинты под тегом "products" в Swagger UI
+    tags=["products"],
 )
 
 
 
 
 # Сохраняет изображение товара и возвращает относительный URL
-async def save_product_image(file: UploadFile) -> str: # принимает объект UploadFile, который представляет загруженный пользователем файл на наш сайт, и возвращает строку, которая содержит относительный URL, по которому это изображение будет доступно через веб-сервер(связка FastAPI и Uvicorn).
+async def save_product_image(file: UploadFile) -> str:
     """
     Сохраняет изображение товара и возвращает относительный URL.
     """
-    if file.content_type not in ALLOWED_IMAGE_TYPES: # если MIME-тип(который клиент отправляет в заголовке Content-Type) НЕ в белом списке
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only JPG, PNG or WebP images are allowed") # <--первый рубеж защиты: если кто-то попытается загрузить файл с типом application/php, text/plain или image/svg+xml, он будет отклонён с ошибкой 400. Мы не полагаемся только на расширение файла, потому что его легко подделать, например, переименовать evil.php в photo.jpg.
-    # Дело в том, что когда файл летит через интернет, браузер обязан честно заполнить специальную техническую строчку — заголовок Content-Type (MIME-тип). Браузер не может обмануть сервер, потому что он определяет тип по реальному содержимому файла, а не по его названию.
-    content = await file.read() # асинхронно читает содержимое файла (сохраняется как байтовая строка (bytes)). Вся картинка загружается в ОЗУ вашего сервера(в нашем случае ПК) в виде «сырого» двоичного кода. (Метод .read() у объекта UploadFile в FastAPI — это именно асинхронная функция. Поэтому писать await file.read() не просто можно, а строго необходимо, иначе код выдаст ошибку.)
-    if len(content) > MAX_IMAGE_SIZE: # если размер файла(байтов) больше допустимого (Для байтовой строки len() считает именно количество байтов). Это второй рубеж защиты вашего сервера (ПК). Она проверяет реальный размер файла в байтах сразу после того, как он был прочитан в оперативную память.(1. Защита от переполнения диска ПК (Атака на отказ), 2. Защита от финансового разорения (на будущее) (деньги за каждый гигабайт удалённого сервера))
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image is too large") # <--некорректные данные
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only JPG, PNG or WebP images are allowed")
+    content = await file.read()
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image is too large")
 
-    extension = Path(file.filename or "").suffix.lower() or ".jpg" # извлекается extension/расширение из оригинального имени файла. (в редких случаях может быть None, и чтобы Path() не вызвал ошибку добавляем - or "")
-    # UploadFile.filename — свойство в FastAPI, которое хранит оригинальное имя файла, каким оно было на компьютере пользователя до загрузки
-    # Path() - превращает обычную текстовую строку в специальный умный объект для работы с путями.
-    # .suffix — свойства объекта Path() - смотрит на имя, находит последнюю точку и забирает её вместе со всеми буквами после неё (.JPG). lower() - приводит к нижнему регистру
-    # or ".jpg" — в Python пустая строка "" считается «ложным» значением (False). Оператор or видит эту пустоту, переключается на запасной вариант и подставляет ".jpg".
-    file_name = f"{uuid.uuid4()}{extension}" # генерируется новое уникальное имя файла из двух кусочков: уникального кода и расширения: uuid.uuid4() создаёт 128-битный случайный идентификатор в формате "550e8400-e29b-41d4-a716-446655440000", к которому добавляется расширение + ".jpg".
-    # uuid.uuid4() - встроенный инструмент Python, который генерирует абсолютно случайный, гигантский набор букв и цифр в шестнадцатеричной системе счисления.
-    file_path = MEDIA_ROOT / file_name # создание финального, полного адреса картинки на жестком диске: S:\Python_проекты\fastapi_ecommerce\media\products\550e8400-e29b-41d4-a716-446655440000.jpg
-    #  (объект пути)(класс Path) / строка. <----возвращает новый объект Path. Включается логика Python и pathlib(метод __truediv__): взять левый путь, поставить между ними правильный компьютерный слэш и приклеить правое имя файла. (это как: "str"+"str" или "str"*5)
-    file_path.write_bytes(content) # содержимое записывается на диск (бинарная запись), которая сохраняет файл в точности как он был загружен, без перекодировки или изменения по пути: S:\Python_проекты\fastapi_ecommerce\media\products\550e8400-e29b-41d4-a716-446655440000.jpg
-    # Path .write_bytes() -
-    # 1. открывает файл по сгенерированному пути в режиме записи байтов("wb"). (физически создаёт пустой файл(если файла нет) как в нашем случае)
-    # 2. записывает всю байтовую строку, которая была прочитана в ОЗУ(await file.read()) на жёсткий диск
-    # 3. автоматически закрывает файл, чтобы освободить ресурсы компьютера и память, даже если в процессе записи произойдет какой-то сбой.
-    return f"/media/products/{file_name}" # <---относительный URL, который будет сохранён в БД и использован в API строка вида: /media/products/550e8400-e29b-41d4-a716-446655440000.jpg
-                                          # Он совпадает с маршрутом, смонтированным через app.mount("/media", ...), поэтому файл будет доступен по прямой ссылке в браузере.
-# В БД нельзя (и очень вредно) заталкивать саму тяжелую картинку. Вместо этого мы сохраняем туда обычный короткий текст — относительный URL.
+    extension = Path(file.filename or "").suffix.lower() or ".jpg"
+    file_name = f"{uuid.uuid4()}{extension}"
+    file_path = MEDIA_ROOT / file_name
+    file_path.write_bytes(content)
+    return f"/media/products/{file_name}"
 
 
 
 
 # Удалением изображения
-def remove_product_image(url: str | None) -> None: # принимает строку url, это значение поля "image_url" из БД (например, /media/products/550e8400-e29b-41d4-a716-446655440000.jpg) или None если изображения не было.
+def remove_product_image(url: str | None) -> None:
     """
     Удаляет файл изображения, если он существует.
     """
-    if not url: # если None
-        return # ничего не возвращает
-    relative_path = url.lstrip("/") # <--полностью удаляет все косые черты (слеши) с левой стороны строки. Если оставить слеш в начале (/media/...), операционная система (особенно Linux/macOS) воспримет этот путь как абсолютный. Python проигнорирует папку вашего проекта и пойдет искать папку media в самый корень всей операционной системы (туда, где лежат системные папки вроде /bin, /etc, /var). Вы получите ошибку, что папка или файл не найдены. Убрав слеш, вы делаете путь относительным. Теперь Python будет искать папку media прямо внутри папки вашего запущенного проекта.
-    file_path = BASE_DIR / relative_path # окончательно формирует точный абсолютный путь к файлу на вашем сервере. S:\Python_проекты\fastapi_ecommerce + / + media/products/550e8400-e29b-41d4-a716-446655440000.jpg (формируем этот путь заново, потому что программа не хранит его в оперативной памяти между запросами)
-    if file_path.exists(): # новый объект Path Path.exists() - (существует) делает запрос к ОС (Windows/Linux) и проверяет, существует ли физически файл или папка по указанному пути.
-        file_path.unlink() # Path.unlink() - физически удаляет файл с жесткого диска вашего сервера.
-
-# Это необходимо для экономии места и предотвращения накопления "мусора", например когда продавец обновляет фото товара, старое изображение становится ненужным и его нужно удалить.
+    if not url:
+        return
+    relative_path = url.lstrip("/")
+    file_path = BASE_DIR / relative_path
+    if file_path.exists():
+        file_path.unlink()
 
 
 
@@ -112,135 +81,106 @@ def remove_product_image(url: str | None) -> None: # принимает стро
 
 
 
-# Множественное наследование. str - Константы начинают вести себя как обычные строки. Можно писать if sort_by == "created_at":, не используя длинную запись через "sort_by.value"
-class ProductSortField(str, Enum):  # Что сортировать. str (строковый Enum): все атрибуты - все что находится внутри класса и к чему можно обратиться через точку, которые вы объявляете внутри класса, автоматически становятся полноценными строками. Это необходимо для FastAPI: в документации Swagger (UI) вместо непонятных объектов отобразятся красивые строковые подсказки "id" и "created_at".
-    id = "id"                   # <---сортировка по .id
-    created_at = "created_at"   # <---сортировка по .created_at
 
-class SortDir(str, Enum):  # Как сортировать (наследование от "str" и "Enum")
+class ProductSortField(str, Enum):
+    id = "id"
+    created_at = "created_at"
+
+class SortDir(str, Enum):
     asc = "asc"
-    desc = "desc" # <---сюда попадает значение, которое передал клиент/пользователь
+    desc = "desc"
 
-# Атрибуты делятся на две главные категории:
-# Данные (их называют переменными, свойствами или полями).
-# Поведение (их называют методами или функциями).
+
 
 # Возвращает список всех активных товаров с поддержкой пагинации
-@router.get("/",response_model=ProductList, status_code=status.HTTP_200_OK) # Использовали схему ProductSchema (это алиас Product) с from_attributes=True для преобразования объектов ProductModel в JSON
+@router.get("/",response_model=ProductList, status_code=status.HTTP_200_OK)
 async def get_all_products(
-        page: Annotated[int, Query(ge=1)] = 1, # (int, по умолчанию: 1, ограничение: >= 1) Номер страницы для пагинации. Начиная с 1.
-        page_size: Annotated[int, Query(ge=1, le=100)] = 20, # (int, по умолчанию: 20, ограничение: >= 1 и <= 100) Количество товаров на одной странице.
-        category_id: Annotated[int | None, Query(description="ID категории для фильтрации")] = None, # Фильтр по ID категории, None если не указан.
-        search: Annotated[str | None, Query(min_length=1, description="Поиск по названию товара")] = None, # параметр позволяет пользователю передать поисковый запрос (например search=Iphone). min_length=1 - защищает от ввода пустой строки, но не защищает, есои пользователь введёт только пробелы (для этого ниже есть if search_value:)
-        min_price: Annotated[float | None, Query(ge=0, description="Минимальная цена товара")] = None, # Цены, минимум 0 (ge=0).
-        max_price: Annotated[float | None, Query(ge=0, description="Максимальная цена товара")] = None,# Цены, минимум 0 (ge=0).
-        in_stock: Annotated[bool | None, Query(description="true — только товары в наличии, false — только без остатка")] = None, # True (stock > 0), False (stock = 0).  (false - товары НЕ в наличии)
-        seller_id: Annotated[int | None, Query(description="ID продавца для фильтрации")] = None, # Фильтр по продавцу.
-        sort_by: Annotated[ProductSortField, Query(description="Поле сортировки")] = ProductSortField.id, # Enum жестко контролирует, чтобы в переменную попало только "id" или "created_at" (по умолчанию ProductSortField.id). (Если пользователь не укажет параметр, отсортирует по id)
-        sort_dir: Annotated[SortDir, Query(description="Направление сортировки")] = SortDir.desc, # Enum жестко контролирует, чтобы в переменную попало только "asc или "desc" (по умолчанию SortDir.desc (сортирует от новых товаров к старым)).
-        db: AsyncSession = Depends(get_async_db)):    # когда клиент передает параметр, FastAPI видит, что "sort_by" принимают классы типа Enum, он сам заходит в класс ProductSortField и ищет там переменные с тем же именем, что и переданные в запросе и если они есть, присваивает переменной "sort_by" объект "ProductSortField.id" или "ProductSortField.created_at"
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+        category_id: Annotated[int | None, Query(description="ID категории для фильтрации")] = None,
+        search: Annotated[str | None, Query(min_length=1, description="Поиск по названию товара")] = None,
+        min_price: Annotated[float | None, Query(ge=0, description="Минимальная цена товара")] = None,
+        max_price: Annotated[float | None, Query(ge=0, description="Максимальная цена товара")] = None,
+        in_stock: Annotated[bool | None, Query(description="true — только товары в наличии, false — только без остатка")] = None,
+        seller_id: Annotated[int | None, Query(description="ID продавца для фильтрации")] = None,
+        sort_by: Annotated[ProductSortField, Query(description="Поле сортировки")] = ProductSortField.id,
+        sort_dir: Annotated[SortDir, Query(description="Направление сортировки")] = SortDir.desc,
+        db: AsyncSession = Depends(get_async_db)):
     """
     Возвращает список всех активных товаров с поддержкой пагинации и фильтров.
     """
-    # stmt = select(ProductModel).join(CategoryModel).where(ProductModel.is_active == True, ProductModel.stock > 0, CategoryModel.is_active == True)
-    # products = await db.scalars(stmt) or 0 # await - вернет объект ScalarResult в переменную "products"
 
-    # Проверка логики min_price <= max_price
-    if min_price is not None and max_price is not None and min_price > max_price: # если  оба параметра запроса заданы И минимальная цена БОЛЬШЕ максимальной
-        raise HTTPException( # Это предотвращает нелогичные запросы, когда цена от 1000 до 500.
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="min_price не может быть больше max_price",
         )
 
 
     # Формируем список динамических фильтров (условия для запроса)
-    filters = [ProductModel.is_active == True] # базвое условие - выводит все АКТИВНЫЕ товары
-    if category_id is not None: # Фильтр по категории (например /products/?category_id=1)
-        filters.append(ProductModel.category_id == category_id) # ограничивает выборку товарами из указанной категории (указанной пользователем)
-    # if search is not None: # Проверяем, передан ли "search"
-    #     search_value = search.strip() # обрезаем пробелы по краям.    Поиск интегрирован в список filters, что позволяет комбинировать его с другими условиями (category_id, min_price, max_price, in_stock, seller_id).
-    #     if search_value: # Если строка не пуста(такое может быть, если например пользователь ввёл пробелы несколько раз). LOWER() — это встроенная функция в языках SQL (базах данных), которая преобразует все заглавные буквы в строке в строчные (маленькие). В данном случае преобразует запрос(search_value.lower()) и поле (ProductModel.name)
-    #         filters.append(func.lower(ProductModel.name).like(f"%{search_value.lower()}%")) # Знак % означает любое количество любых символов (включая ноль символов) в том месте, где именно вы его поставили. (товар будет находиться, даже если пользователь ввёл только часть названия (в начале, середине или конце). Добавляется выражение, которое ищет подстроку в строке (ProductModel.name). Теоретически можно использовать ILIKE для нечувствительного к регистру поиска (например PostgreSQL), но так как не все СУБД поддерживают ILIKE, здесь применён более универсальный подход. (Пагинация и подсчёт общего количества (total) остались без изменений, но теперь учитывают поисковый фильтр.)
-    if min_price is not None: # Фильтр по минимальной цене (например /products/?min_price=500)
-        filters.append(ProductModel.price >= min_price) # ограничивает товары, у которых цена больше или равна указанной.
-    if max_price is not None: # Фильтр по максимальной цене (например /products/?max_price=1000)
-        filters.append(ProductModel.price <= max_price) # ограничивает товары, у которых цена меньше или равна указанной.
-    if in_stock is not None: # Фильтр по наличию (например /products/?in_stock=true)
-        filters.append(ProductModel.stock > 0 if in_stock else ProductModel.stock == 0) # добавляем условие, зависящее от значения: (True: ProductModel.stock > 0 — товары в наличии)  (False: ProductModel.stock == 0 — товары, которых нет в наличии)
-    if seller_id is not None: # Фильтр по продавцу (например /products/?seller_id=2)
-        filters.append(ProductModel.seller_id == seller_id) # ограничивает выборку товарами от конкретного продавца.
-    # Можно добавить дополнительный фильтр, например: поле "brand_id"
-# SQLAlchemy переопределяет магические методы (__gt__, __eq__, и т.д.) так, чтобы они возвращали не булевы значения, а объекты-выражения (BinaryExpression), которые:
-# 1. Могут быть скомбинированы ((ProductModel.price > 10) & (ProductModel.stock > 0))        <---так можно объединять выражения для SQLAlchemy самостоятельно, использовать "&", а не "and", так как "and" уже занят языком Python
-# 2. Могут быть скомпилированы в SQL на любом диалекте (PostgreSQL, MySQL, SQLite)
-# 3. Позволяют оптимизировать запрос (все условия в одном WHERE)    <---Каждое выражение в SQLAlchemy — это не просто строчка текста, это структура данных. Когда SQLAlchemy получает ваш список фильтров в методе .where(*filters), она запускает внутренний сборщик (компилятор). Этот сборщик берет все объекты из списка и строит из них дерево условий: Сборщик берет первое условие, автоматически ставит текстовый маркер AND, пристыковывает второе, снова ставит AND и пристыковывает третье. Полноценный текст WHERE is_active = true AND category_id = 1 AND price >= 500 физически рождается только тогда, когда вы вызываете команду отправки запроса в базу (например, session.execute(query)).
-# 4. Поддерживают ленивую загрузку и другие ORM-фичи                <---отложенное выполнение: когда вы пишете ProductModel.price >= 500, Python не отправляет запрос в базу данных. Вместо этого создаётся объект BinaryExpression. Это обычный Python-объект, который просто сидит в памяти и ждёт.
-# Поэтому в список "filters" возвращается не True/False, а "запись чертежа, инструкция для будущего SQL-запроса", само ВЫРАЖЕНИЕ (объект типа - BinaryExpression)
+    filters = [ProductModel.is_active == True]
+    if category_id is not None:
+        filters.append(ProductModel.category_id == category_id)
+    if min_price is not None:
+        filters.append(ProductModel.price >= min_price)
+    if max_price is not None:
+        filters.append(ProductModel.price <= max_price)
+    if in_stock is not None:
+        filters.append(ProductModel.stock > 0 if in_stock else ProductModel.stock == 0)
+    if seller_id is not None:
+        filters.append(ProductModel.seller_id == seller_id)
 
-    # Подсчёт общего количества товаров с учётом фильтров (*filters) (Базовый)
-    # total_stmt = select(func.count()).select_from(ProductModel).where(*filters) # внутри метода .where() условия для фильтрации данных (выражения), которые находятся внутри списка "filters" автоматически объединяются через логический оператор AND, что в итоге преобразуется в SQL-запрос вида WHERE is_active = true AND category_id = 1 AND price >= 500 AND
-
-    rank_col = None # эта переменная будет хранить колонку ранжирования (ts_rank_cd(...)) или None. Это позволит нам динамически менять логику выборки (с ranking или без) чтобы избежать лишних вычислений ts_rank_cd, если поиска нет.
+    rank_col = None
     if search:
-        search_value = search.strip() # обрезаем пробелы по бокам
-        if search_value: # если после пробелов что-то осталось
-            # строим два tsquery для одной и той же фразы
-            # web-подобный синтаксис: кавычки, минус, AND/OR — безопаснее для пользователя (строим два tsquery для одной и той же фразы)
-            ts_query_en = func.websearch_to_tsquery('english', search_value) # 'купить' & 'iphon' - ПОДГОТОВКА: 1. regconfig='english' - передаем поддержку английской морфологии, которая зарегистрирована в вашей БД PostgreSQL (правила какого языка применить для парсинга). 2. text=search_value «сырая» текстовая строка, которую пользователь ввел в поле поиска. На выходе функция выдает специальный тип данных PostgreSQL — tsquery. Эта функция преобразует обычный поисковый запрос (похожий на запрос в поисковых системах, таких как Google) в объект типа tsquery, подходящий для PostgreSQL, где слова соединены логическими операторами (& (И), | (ИЛИ), ! (НЕ), <-> (РАССТОЯНИЕ)).
-            ts_query_ru = func.websearch_to_tsquery('russian', search_value) # 'куп' & 'iphone'    <----автоматически соединяет их жестким логическим оператором & (И)
+        search_value = search.strip()
+        if search_value:
+            ts_query_en = func.websearch_to_tsquery('english', search_value)
+            ts_query_ru = func.websearch_to_tsquery('russian', search_value)
             # Ищем совпадение в любой конфигурации и добавляем в общий фильтр
-            ts_match_any = or_( # подходит либо под английский вариант запроса, либо под русский вариант (or_ в SQLAlchemy — это функция, которая собирает логическое условие «ИЛИ».)
+            ts_match_any = or_(
                 ProductModel.tsv.op('@@')(ts_query_en),
                 ProductModel.tsv.op('@@')(ts_query_ru),   # объединяем 2 выражения (если хоть одно подходит)
             )
-            filters.append(ts_match_any) # WHERE (products.tsv @@ ts_query_en) OR (products.tsv @@ ts_query_ru)
+            filters.append(ts_match_any)
             # берем ранг максимальный из двух
-            rank_col = func.greatest( # func.greatest - вызов GREATEST(...) (из PostgreSQL) - функция, которая принимает несколько чисел и выбирает из них самое большое (максимальное). (А если они равны, то этот бал и выберет - например 0.16 и 0.16 = 0.16)
+            rank_col = func.greatest(
                 func.ts_rank_cd(ProductModel.tsv, ts_query_en),
                 func.ts_rank_cd(ProductModel.tsv, ts_query_ru),
             ).label("rank")
-            # Добавляем full-text фильтр @@
-            # filters.append(ProductModel.tsv.op('@@')(ts_query)) # добавляем в фильтр наш полнотекстовый поиск. В этом коде мы общаемся к полю ProductModel.tsv, которое хранит предварительно обработанный текст для быстрого поиска (токенизирован (разбит на слова), лемматизирован (приведен к базовой форме слов), нормализован (убраны стоп-слова, приведена к нижнему регистру), сохранены позиции слов для ранжирования). И через метод SQLAlchemy для создания кастомного оператора .op('@@'), мы передаем @@ — специальный оператор соответствия PostgreSQL для полнотекстового поиска и объект типа tsquery (полученный из websearch_to_tsquery). ЧТО_ВЫДАТЬ - (WHERE tsv @@ ts_query)(подходит ли товар под условия поиска): 1.Ссылка на левую колонку (ProductModel.tsv).  2.Сам оператор (@@)   3.Ссылка на правую часть (ts_query) (передается аргументом функции созданной .op()).  Здесь задействуется GIN-индекс. База данных не читает тексты всех товаров подряд. Она открывает индекс, сразу видит список ID товаров, где есть слово iphone, и оставляет в выдаче только их. Все остальные миллионы товаров отсекаются за доли миллисекунды.  ProductModel.tsv — обращение к вашей Computed колонке типа TSVECTOR, в которой уже лежат готовые корни слов с весами A и B. .op('@@') — это специальный метод SQLAlchemy, который заменяет стандартные операторы сравнения (вроде == или >) на специфичный оператор базы данных. В данном случае вызывается главный оператор полнотекстового поиска PostgreSQL — @@ (оператор соответствия). (ts_query) — аргумент оператора. Сюда передается результат функции func.websearch_to_tsquery('english', search_value). Пример: SELECT * FROM products  WHERE tsv @@ websearch_to_tsquery('english', 'iphones').
-            # Ранг с "coverage density" (ts_rank_cd) устойчивее к длинным текстам.   ts_rank_cd() это алгоритм ранжирования, который: Учитывает плотность покрытия ключевых слов в документе. Устойчив к спаму: длинные описания не получают искусственно высокий ранг. Веса работают: слова с весом 'A' дают больше очков, чем 'B'
-            # rank_col = func.ts_rank_cd(ProductModel.tsv, ts_query).label("rank") # вычисляем ранг: Ранжирование(подсчет баллов) - (ORDER BY rank DESC): Здесь на лету создается виртуальная/временная колонка в ОЗУ, потому что балл релевантности зависит от того, что именно ввёл пользователь прямо сейчас. балл релевантности зависит от того, что именно ввёл пользователь прямо сейчас. Берёт запрос пользователя ts_query (из памяти). Функция ts_rank_cd считает балл. Метод .label("rank") создаёт новую временную колонку rank прямо в оперативной памяти сервера.  ts_rank_cd - вычислитель оценки (рейтинга) каждого найденного объекта: 1. ProductModel.tsv - что ранжировать (колонка типа TSVECTOR)  2. ts_query - на основе чего ранжировать ('игров' & 'ноутбук')). .label("rank") - не передается в саму функцию БД, срабатывает на уровне SQLAlchemy и принимает строку, которая станет псевдонимом (AS rank) для этого вычисления в SQL-запросе, позволяя вам обращаться к результату как к обычному свойству объекта в Python. Функция ts_rank_cd возвращает число с плавающей точкой (тип данных real в PostgreSQL, что в Python соответствует типу float).
-            # total с учётом полнотекстового фильтра
 
-    total_stmt = select(func.count()).select_from(ProductModel).where(*filters) # total_stmt перезаписывается, если пользователь ввел поисковый запрос (с добавленным в filters ---> filters.append(ProductModel.tsv.op('@@')(ts_query)))   (# total с учётом полнотекстового фильтра)
 
-    total = await db.scalar(total_stmt) or 0 # получение числа - count()
+    total_stmt = select(func.count()).select_from(ProductModel).where(*filters)
+
+    total = await db.scalar(total_stmt) or 0
 
     # Основной запрос (если есть поиск — добавим ранг в выборку и сортировку)
-    if rank_col is not None: # <--если пользователь ввёл поисковый запрос, и мы сформировали для него формулу ранжирования (расчёта баллов). нужно для динамического переключения режима работы базы данных (включение или выключение тяжелого поиска на лету) (ранее создавали "rank_col = None"). С помощью этой проверки SQLAlchemy понимает, какой из двух принципиально разных SQL-запросов ей нужно собрать и отправить в PostgreSQL. Режим №1: Поиска нет (rank_col равен None)
+    if rank_col is not None:
         products_stmt = (
-            select(ProductModel, rank_col) # select возвращает: ProductModel - все поля таблицы(ЧЕРТЕЖ), rank_col - ЧЕРТЕЖ колонки ранжирования (выражение). Правило БД -  сначала фильтрация строк таблицы, а только потом расчет выражений
-            .where(*filters) # (WHERE tsv @@ ts_query) - (tsvector @@ tsquery) - применется фильтр "filters.append(ProductModel.tsv.op('@@')(ts_query))" и остальные фильтры (если указаны) к ProductModel (игнорируя rank_col) - Из первого аргумента она понимает, откуда выгружать основные поля. Из второго аргумента (rank_col) она понимает, из какой именно таблицы брать текстовый вектор для расчёта баллов
-            .order_by(desc(rank_col), ProductModel.id) # (ORDER BY rank DESC) - по убыванию desc(rank_col), и если поисковый балл совпал до сотых долей(одинаковый ранг), то сортирует по - ProductModel.id
-            .offset((page - 1) * page_size) # сколько пропустить строк
-            .limit(page_size) # сколько вывести строк
+            select(ProductModel, rank_col)
+            .where(*filters)
+            .order_by(desc(rank_col), ProductModel.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-        result = await db.execute(products_stmt) # получаем объекты Result (пример - (ProductModel, 0.85))  (.scalars() - использовать НЕЛЬЗЯ, в случае, если select возвращает строку из нескольких колонок - (ProductModel, 0.85)). Он берет весь результат и оставляет в каждой строке только самый первый элемент (под индексом 0), а всё остальное просто выбрасывает из памяти
-        rows = result.all() # объекты Result в списке. [(ProductModel, 0.85), (ProductModel, 0.75), (ProductModel, 0.65)]  <-----отсортировано по убыванию (desc(rank_col))
-        items = [row[0] for row in rows]  # сами объекты (берем 1-й объект "ProductModel" из каждого элемента (ProductModel, 0.75) в списке "rows")
-        # при желании можно вернуть ранг в ответе
-        # ranks = [row.rank for row in rows]   <----- [0.85, 0.75...]
-    else: # если "search" или "rank_col" НЕТ (СОРТИРУЕМ ИНАЧЕ)
-        # словарь - маппинг (mapping). "Карта соответствий" (текстовый выбор пользователя превращается в реальный объект колонки из базы данных) (добавлен чтобы избежать огромного и некрасивого нагромождения условий if/else (или match/case) прямо посреди SQL-запроса.)
-        SORT_MAPPING = { # ключ - объект Enum: значение - значение из ORM объекта
-            ProductSortField.id: ProductModel.id,                   # <--что сортируем (.id)
-            ProductSortField.created_at: ProductModel.created_at,   # <--что сортируем (.created_at)
+        result = await db.execute(products_stmt)
+        rows = result.all()
+        items = [row[0] for row in rows]
+    else:
+        SORT_MAPPING = {
+            ProductSortField.id: ProductModel.id,
+            ProductSortField.created_at: ProductModel.created_at,
         }
-        # что сортируем
-        sort_column = SORT_MAPPING.get(sort_by)  # из словаря по КЛЮЧУ ("ProductSortField.id" или "ProductSortField.created_at") берём ЗНАЧЕНИЕ (ProductModel.id или ProductModel.created_at).
-        # как сортируем
-        sort_expression = desc(sort_column) if sort_dir == SortDir.desc else asc(sort_column)  # сортировать по убыванию, если пользователь передал "desc" в строку запроса (который потом попадает в фильтр - Enum) иначе, по возрастанию
+
+        sort_column = SORT_MAPPING.get(sort_by)
+        sort_expression = desc(sort_column) if sort_dir == SortDir.desc else asc(sort_column)
         # Выборка товаров с фильтрами и пагинацией
         products_stmt = (
             select(ProductModel)
-            .where(*filters)  # внутри метода .where() условия для фильтрации данных (выражения), которые находятся внутри списка "filters" автоматически объединяются через логический оператор AND, что в итоге преобразуется в SQL-запрос вида WHERE is_active = true AND category_id = 1 AND price >= 500 AND
-            .order_by(sort_expression, desc(ProductModel.id)) # <--сортировка по выражению, если сортировка была по "created_at" то вторым аргументом прописываем "desc(ProductModel.id)", чтобы не было хаоса, если дата создания у некоторых товаров совпадает, так он не выдаст эту часть результатов вразнобой (.desc() — логика вывода новинок).
-            .offset((page - 1) * page_size) # OFFSET: Сколько строк пропустить = (Количество страниц, которые остались позади) × (Размер одной страницы)
-            .limit(page_size) # Ограничение на количество возвращаемых строк (максимум page_size). Это предотвращает перегрузку ответа
-        )                     # LIMIT(SQL) - используется для ограничения количества строк, возвращаемых в результате выполнения запроса SELECT
+            .where(*filters)
+            .order_by(sort_expression, desc(ProductModel.id))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
 
         # Выполнение запроса и обработка результата
         items = (await db.scalars(products_stmt)).all()
@@ -252,62 +192,18 @@ async def get_all_products(
         "page_size": page_size,
     }
 
-# Разберем общий механизм:
-# Список filters представляет собой массив SQLAlchemy-выражений, которые формируют условия для фильтрации данных.
-# В методе where(*filters) эти выражения автоматически объединяются через логический оператор AND, что в итоге преобразуется в SQL-запрос вида WHERE is_active = true AND category_id = 1 AND price >= 500 AND .....
-# Этот список используется дважды в коде: сначала в total_stmt для подсчёта общего количества записей (COUNT(*)) с учётом всех активных фильтров,
-# а затем в products_stmt для выборки конкретной порции товаров с применением пагинации через offset и limit.
-# Такой подход обеспечивает согласованность, так как общее количество (total) и возвращаемые товары (items) всегда соответствуют одним и тем же фильтрам.
-# Почему динамические фильтры?
-# Использование динамических фильтров делает код масштабируемым: добавление нового фильтра, например, по бренду (если добавим поле brand_id), требует лишь одной строки if brand_id is not None: filters.append(ProductModel.brand_id == brand_id), без изменения остальной логики.
-# фильтры применяются только при наличии соответствующих параметров запроса, что оптимизирует производительность. И ненужные условия не включаются в SQL-запрос, минимизируя нагрузку на базу данных.
-
-
-    # # Общее кол-во строк(товаров) (ТОЛЬКО ПАГИНАЦИЯ (без фильтров))
-    # total_stmt = select(func.count()).select_from(ProductModel).where(ProductModel.is_active == True) # подсчета всех активных товаров. ИЛИ: select(func.count()) сам по себе не содержит колонок таблицы, поэтому SQLAlchemy не всегда может понять, что должно быть в FROM. А select_from(ProductModel) говорит что нужно считать из ProductModel. Можно считать по конкретной колонке, и тогда FROM выводится автоматически: select(func.count(ProductModel.id)).where(ProductModel.is_active == True)
-    # total = await db.scalar(total_stmt) or 0 # (НО .count() в любом случае вернет строкой "0", если товаров в таблице не будет) (func.sum() или func.avg() (SUM, AVG, MIN, MAX) - вычисляют значения - возвращают NULL (а не 0). Вот здесь or 0 критически необходим, чтобы код не упал со значением None вместо ожидаемого числа.)
-
-    # # Выборка активных товаров, отсортированных по id (по возрастанию).(на одну страницу) (ДЛЯ ПАГИНАЦИИ)
-    # products_stmt = (
-    #     select(ProductModel)
-    #     .where(ProductModel.is_active == True)          <-----только 1 фильтр
-    #     .order_by(ProductModel.id) # <--сортировка по .id
-    #     .offset((page - 1) * page_size) # OFFSET: Сколько строк пропустить = (Количество страниц, которые остались позади) × (Размер одной страницы)
-    #     .limit(page_size) # Ограничение на количество возвращаемых строк (максимум page_size). Это предотвращает перегрузку ответа
-    # )                     # LIMIT(SQL) - используется для ограничения количества строк, возвращаемых в результате выполнения запроса SELECT
-
-    # # Выполнение запроса и обработка результата.    # Этот шаг извлекает только нужную "страницу" данных, чтобы не возвращать весь список сразу (что было бы неэффективно для тысяч товаров).
-    # items = (await db.scalars(products_stmt)).all() # "await db.scalars(products_stmt)" - возвращает объект ScalarResult, который содержит ORM-объекты (экземпляры ProductModel). (В выражение await попадает специальный объект-сорутина (coroutine) или аwaitable-объект)
-    # return {                                        # .all() - извлекает все объекты из результата в список items (тип list[ProductModel]).
-    #     "items": items,       # <---items - это список всех объектов (ORM-моделей SQLAlchemy) и поэтому во время сериализации в JSON включается настройка: model_config = ConfigDict(from_attributes=True)
-    #     "total": total,       # общее количество объектов.      <--Словарь возвращается как JSON, соответствующий response_model=ProductList (этот словарь возвращаясь провалидируется Pydantic-схемой "ProductList" и для того, чтобы этот словарь валидировался, мы указываем "response_model=ProductList")
-    #     "page": page,         # текущая страница
-    #     "page_size": page_size,   # количество элементов на странице
-    # }
-    # # return products.all() # .all() вернет пустой список [], если товаров нет
-
-
-# Когда в скобках функции func.count() ничего нет (или когда в обычном SQL пишут COUNT(*)), база данных считает общее количество строк, которые подходят под ваши условия в блоке where.
-# Метод .select_from() явно указывает базе данных, с какой именно таблицы (модели) начинать выполнение запроса.
-
 
 
 
 # СОЗДАНИЕ нового товара
 @router.post("/", response_model=ProductSchema, status_code=status.HTTP_201_CREATED)
-async def create_product( # File(None) - по умолчанию - None
-        product: ProductCreate = Depends(ProductCreate.as_form), # вызываем as_form, передавая поля формы, где метод "as_form" собирает все поля Form(...) и возвращает валидированный ProductCreate.
-        image: UploadFile | None  = File(None), # Наличие маркера File заставляет парсер искать в запросе бинарные данные (файл) (поток байтов (картинка, документ и т.д.)). Это автоматически обязывает парсер принимать весь HTTP-запрос исключительно в формате multipart/form-data (потому что обычный JSON или URL-строка передавать тяжелые файлы не умеют). (Функция File() в FastAPI принимает те же самые параметры, что и Form() или Query(), так как все они наследуются от общего класса Param в FastAPI)
+async def create_product(
+        product: ProductCreate = Depends(ProductCreate.as_form),
+        image: UploadFile | None  = File(None),
         db: AsyncSession = Depends(get_async_db),
-        current_user: UserModel = Depends(get_current_seller) # ПОЛУЧАЕТ готовый объект "UserModel", который генерируется (возвращается) зависимостью "get_current_seller". Эта зависимость, в свою очередь, извлекает токен, находит пользователя в базе данных и проверяет, что его роль — действительно "seller".    (P.S. Если пишем просто типо - "user: UserModel" --> то это просто аннотация того, что переменая должна принять от клиента)
+        current_user: UserModel = Depends(get_current_seller)
 ):
-    # Когда мы объявляем параметр запроса как file: UploadFile = File(...), происходит несколько важных вещей:
-    # - fastapi.File: Это функция-зависимость, предоставляемая FastAPI. Она указывает FastAPI, что ожидается загрузка файла из тела запроса (multipart/form-data). File(...) используется точно так же, как Body(...), Query(...), Path(...) для других типов данных.
-    # - UploadFile: Это класс из библиотеки starlette.datastructures. FastAPI автоматически преобразует полученные бинарные данные файла в экземпляр UploadFile. Этот класс предоставляет удобный интерфейс для работы с загруженным файлом.
-    # Одной из ключевых особенностей UploadFile является его интеллектуальное управление хранением. Он ведёт себя подобно SpooledTemporaryFile из стандартной библиотеки Python:
-    # - Хранение в памяти: Для небольших файлов UploadFile по умолчанию хранит их целиком в оперативной памяти сервера. Это быстро и эффективно, так как не требуется обращение к диску.
-    # - Хранение на диске: Если размер загружаемого файла превышает определённый порог (по умолчанию 1 МБ), UploadFile автоматически записывает содержимое файла во временный файл на диске. Это предотвращает исчерпание оперативной памяти сервера при обработке больших файлов, что критически важно для производительности и стабильности. Вам не нужно вручную управлять этим переключением.
-    # После завершения обработки запроса или при закрытии приложения временные файлы, созданные UploadFile, автоматически удаляются.
+
     """
     Создаёт новый товар, привязанный к текущему продавцу (только для 'seller').
     """
@@ -318,26 +214,18 @@ async def create_product( # File(None) - по умолчанию - None
     if category is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category not found or inactive") # Некорректный запрос
     # Сохранение изображения (если есть)
-    image_url = await save_product_image(image) if image else None #  Если файл загружен, то он проходит полную валидацию: проверку MIME-типа, размера (до 2 МБ), расширения, генерацию уникального UUID-имени, сохранение в media/products/. В результате возвращается относительный URL вида /media/products/550e8400-e29b-41d4-a716-446655440000.jpg (Если файла нет image_url = None)
+    image_url = await save_product_image(image) if image else None
     # Создаём товар
-    db_product = ProductModel(**product.model_dump(), # <--создаем новый объект класса ProductModel. model_dump() - превращает Pydantic-модель(ProductCreate) в словарь и (**)распаковывает. Распаковка словаря идёт прямо в __init__ класса ProductModel (способ массового присвоения атрибутов при создании объекта) И ЯВНО добавляет ещё одно поле, привязывает товар к продавцу через "seller_id=current_user.id" (т.е. у каждого товара будет поле seller_id, которое будет указывать на продавца)
-                              seller_id=current_user.id, # привязка к продавцу
-                              image_url=image_url)       # результат загрузки изображения, относительная ссылка на загруженый файл: /media/products/550e8400-e29b-41d4-a716-446655440000.jpg
-    db.add(db_product) # .add() — метод добавляет НОВЫЙ объект в сессию базы данных (соединения с БД не происходит)
+    db_product = ProductModel(**product.model_dump(),
+                              seller_id=current_user.id,
+                              image_url=image_url)
+    db.add(db_product)
     await db.commit()
-    await db.refresh(db_product) # обновляем ОЗУ (данными из БД)     <----!!!!!!
-    return db_product # возвращаем ORM-объект, который сериализуется в JSON
+    await db.refresh(db_product)
+    return db_product
 
 
-# При expire_on_commit=False данные объекта db_category остаются нетронутыми в оперативной памяти (кэше сессии)
-# При expire_on_commit=False данные в ОЗУ помечаются устаревшими сразу после .commit()
 
-# Для этого конкретного примера на PostgreSQL (и других СУБД с поддержкой RETURNING, которую использует SQLAlchemy) после await db.commit() объект обычно УЖЕ СОДЕРЖИТ значения,
-# сгенерированные БД, поэтому результат ответа будет таким же и без await db.refresh(db_product).
-# RETURNING — это специальная конструкция в языке SQL, которая заставляет базу данных вернуть данные сразу в процессе выполнения команд изменения (INSERT, UPDATE или DELETE)
-
-# Когда вы вызываете await db.commit(), SQLAlchemy формирует SQL-запрос INSERT.
-# И SQLAlchemy для PostgreSQL автоматически включает ВСЕ поля с server_default в конструкцию RETURNING. (и в синхронном, и в асинхронном режиме, и при условии, что: "expire_on_commit=False")
 
 @router.get("/category/{category_id}", response_model=list[ProductSchema], status_code=status.HTTP_200_OK)
 async def get_products_by_category(category_id: int, db: Annotated[AsyncSession, Depends(get_async_db)]):
@@ -353,7 +241,7 @@ async def get_products_by_category(category_id: int, db: Annotated[AsyncSession,
     # Получаем активные товары в категории
     stmt = select(ProductModel).where(ProductModel.category_id == category.id, ProductModel.is_active == True)
     temp2 = await db.scalars(stmt)
-    products = temp2.all() #  Если в категории нет активных товаров, возвращается пустой список, что позволяет клиенту корректно обработать отсутствие данных.
+    products = temp2.all()
     return products
 
 
@@ -382,12 +270,11 @@ async def get_product(product_id: int, db: Annotated[AsyncSession, Depends(get_a
 @router.put("/{product_id}", response_model=ProductSchema, status_code=status.HTTP_200_OK)
 async def update_product(
         product_id: int,
-        new_product: ProductCreate = Depends(ProductCreate.as_form),            # принять (image: UploadFile) внутри через Pydantic-схему ProductCreate НЕЛЬЗЯ, т.к. он не знает, как валидировать или сериализовать сложный бинарный поток байтов (тип UploadFile). Библиотека Pydantic создана исключительно для валидации текстовых данных (строки, числа, словари, списки).
-        image: UploadFile | None = File(None), # Для Pydantic файл — это не данные, это процесс (поток, который нужно читать из сети). Поэтому держать файлы внутри стандартных моделей BaseModel в Python считается плохим тоном и архитектурной ошибкой.
-        db: AsyncSession = Depends(get_async_db), # Когда фронтенд отправляет форму с картинкой, браузер кодирует запрос в формат multipart/form-data и делит его на изолированные части через текстовые границы (boundary). Если вы попытаетесь объединить их в одну модель ProductCreate, FastAPI запутается: парсер не сможет понять, как разорвать единый входящий поток, чтобы засунуть текстовые части в аргументы метода as_form, а бинарную часть оставить в виде живого файлового потока.
+        new_product: ProductCreate = Depends(ProductCreate.as_form),
+        image: UploadFile | None = File(None),
+        db: AsyncSession = Depends(get_async_db),
         current_user: UserModel = Depends(get_current_seller)):
-    # 1. new_product уходит в наш метод класса as_form, где FastAPI спокойно собирает легкие текстовые строчки и валидирует их через Pydantic
-    # 2. image уходит в специальный изолированный поток UploadFile, который FastAPI обрабатывает отдельно, дозируя нагрузку на оперативную память (ОЗУ) нашего сервера.
+
     """
     Обновляет товар по его ID, если он принадлежит текущему продавцу (только для 'seller').
     """
@@ -397,7 +284,7 @@ async def update_product(
     db_product = temp.first()
     if db_product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found or inactive")
-    if db_product.seller_id != current_user.id: # Проверяет владение товаром выбрасывая ошибку "403 Forbidden" («Запрещено») при попытке изменить чужой товар.
+    if db_product.seller_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only update your own products")
     # Проверяем, существует ли активная категория
     stmt = select(CategoryModel).where(CategoryModel.id == new_product.category_id, CategoryModel.is_active == True)
@@ -405,23 +292,18 @@ async def update_product(
     category = temp2.first()
     if category is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category not found or inactive")
-    # Обновляем товар                                                                                              #<---этот вариант хуже, т.к. идёт повторное обращение к БД
-    await db.execute(update(ProductModel).where(ProductModel.id == product_id).values(**new_product.model_dump()))     #<---не затрагивает поля "id"  и "is_active", т.к. их НЕТ в Pydantic-схеме "ProductCreate" (new_product). (Здесь метод .items() не нужен, потому что оператор ** (две звёздочки) в Python ожидает на вход обычный словарь (dict), а не список кортежей, который возвращает .items())
-    # for key, value in new_product.model_dump().items():
-    #     if key not in ("id", "is_active"):
-    #         setattr(db_product, key, value)
+    # Обновляем товар
+    await db.execute(update(ProductModel).where(ProductModel.id == product_id).values(**new_product.model_dump()))
 
-    if image: # если файл(изображение) передан
-        remove_product_image(db_product.image_url) # старое изображение удаляется с диска
-        db_product.image_url = await save_product_image(image) # новое сохраняется с UUID, валидацией и генерацией URL.
+
+    if image:
+        remove_product_image(db_product.image_url)
+        db_product.image_url = await save_product_image(image)
     await db.commit()
-    await db.refresh(db_product) # Для консистентности данных (хотя при expire_on_commit=False можно опустить). Обновляем объект внутри ОЗУ (при использовании цикла-for НЕ нужна)   <--(нам не нужно обновлять данные "db_category" в ОЗУ, благодаря настройке: expire_on_commit=False)(но есть нюансы!)
+    await db.refresh(db_product)
     return db_product
 
-# 404 (Не нашли саму страницу) - товара просто нет
-# 400 (Неверно заполнена форма) - идентификатор "new_product.category_id" пришел внутри JSON-тела запроса (из формы, которую заполнил пользователь).
-
-# При использовании "RETURNING" цикл for с setattr не нужен!
+!
 
 
 
@@ -441,34 +323,14 @@ async def delete_product(
     product = temp.first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found or inactive")
-    if product.seller_id != current_user.id: # Проверяет владение товаром выбрасывая ошибку "403 Forbidden" («Запрещено») при попытке удалить чужой товар.
+    if product.seller_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only delete your own products")
-    # Изменяем объект установив is_active=False и сохраняем (логическое удаление)
-    product.image_url = None # удаляем изображение товара
-    product.is_active = False # или: await db.execute(update(ProductModel).where(ProductModel.id == product_id).values(is_active=False)
-    await db.commit() # .commit - сессия отправляет физический SQL-запрос UPDATE на диск только потому, что новое значение (False) изменилось и отличается от старого (True), которое было считано из базы. Если отличий нет, запрос не отправляется, т.к. обновлений нет
-    await db.refresh(product) # Для возврата обновленного объекта с "is_active = False" (происходит маленький запрос в БД, чтобы обновить данные в ОЗУ) (при "product.is_active = False" НЕ НУЖНО)
-    return product # или: {"status": "success", "message": "Product marked as inactive"}
-
-# Можно удалить так:
-# await db.execute(update(ProductModel).where(ProductModel.id == product_id).values(image_url=None, is_active=False)
-# Проверка активности товаров и категорий поддерживает целостность, а логическое удаление сохраняет данные для анализа, что важно для интернет-магазина.
-# Проверка владения предотвращает изменение или удаление чужих товаров, а ошибки (401 Unauthorized, 403 Forbidden, 404 Not Found) обеспечивают безопасность и информативность.
-
-
-
-# 🛡️ РАБОТА "current_user: UserModel = Depends(get_current_seller)":
-# (Вызывается "get_current_seller", внутри которой вызывается "get_current_user")
-#
-# 🎫 Шаг 1: Извлечение токена. Зависимость заглядывает в заголовок запроса и забирает строку токена (с помощью "OAuth2PasswordBearer").
-# 🔓 Шаг 2: Расшифровка. Сервер проверяет срок действия токена, берет "SECRET_KEY" и проверяет подпись токена. Если подпись верна, то получает Payload, вытаскивает оттуда почту и проверяет её наличие (например, admin@example.com).
-# 🗄️ Шаг 3: Поход в базу данных. Сервер открывает SQLAlchemy и делает прицельный запрос в БД: "select(UserModel).where(UserModel.email == email, UserModel.is_active == True)". Если пользователь есть и активен, то он НАЙДЕН (т.е. по уникальному email из токена ищется конкретный человек).
-# 👑 Шаг 4: Проверка роли. База данных возвращает строку пользователя. Зависимость "get_current_seller" проверяет поле роли: "if current_user.role != 'admin'".
-# 🎯 Шаг 5: Передача в переменную. Если роль совпала, функция делает "return current_user", и переменная "current_user" в эндпоинтах получает готовый объект "UserModel".
-
-
-
-
+    # (логическое удаление) is_active=False
+    product.image_url = None
+    product.is_active = False
+    await db.commit()
+    await db.refresh(product)
+    return product
 
 
 

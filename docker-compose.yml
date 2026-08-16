@@ -11,7 +11,7 @@ services:
       POSTGRES_DB: ecommerce_db
     ports:
       - "5432:5432"
-    # === 1. ДОБАВЛЯЕМ СОХРАНЕНИЕ ДАННЫХ БАЗЫ НА ЖЕСТКИЙ ДИСК ===
+
     volumes:
       - pg_ecommerce_data:/var/lib/postgresql/data
 
@@ -29,7 +29,7 @@ services:
     depends_on:
       - db
 
-# === 2. ОБЪЯВЛЯЕМ ТОМ ХРАНИЛИЩА (В САМОМ НИЗУ ФАЙЛА) ===
+
 volumes:
   pg_ecommerce_data:
 

@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv # dotenv — это библиотека (и концепция), которая загружает настройки вашего приложения из специального текстового файла .env в переменные окружения операционной системы. Переменные окружения (Environment Variables) — это глобальные текстовые переменные, которые хранятся не в коде вашей программы, а в самой операционной системе (Windows, Linux, macOS).
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
@@ -7,11 +7,11 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 load_dotenv()
 
 # Строка подключения для SQLite
-DATABASE_URL = "sqlite:///ecommerce.db" # адрес базы данных (SQLite)
+DATABASE_URL = "sqlite:///ecommerce.db"
 
 
 # Создаём Engine (движок)
-engine = create_engine(DATABASE_URL, echo=True) # echo=True — флаг для включения логирования(в продакшене его лучше отключить для оптимизации). При его активации SQLAlchemy будет автоматически дублировать все выполняемые SQL-запросы в консоль (терминал) вашего приложения.
+engine = create_engine(DATABASE_URL, echo=True)
 
 
 # Настраиваем фабрику сеансов
@@ -22,44 +22,22 @@ SessionLocal = sessionmaker(bind=engine)
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-# create_async_engine — специальный конструктор для асинхронного «движка». В отличие от обычного create_engine, он умеет работать с async/await и не блокирует поток выполнения программы во время запросов к БД.
-# async_sessionmaker — фабрика (генератор) сессий. Это фабричный инструмент, который позволяет в коде одной короткой командой создавать новые асинхронные сессии (подключения) для каждого отдельного запроса или пользователя.
-# AsyncSession — класс асинхронной сессии. Сессия — это ваша «рабочая область» (транзакция), внутри которой вы создаете, обновляете или удаляете записи.
 
-# Строка подключения для PostgreSQl
-# DATABASE_URL = "postgresql+asyncpg://ecommerce_user:0000@localhost:5432/ecommerce_db"
-# DATABASE_URL = "postgresql+asyncpg://ecommerce_user:0000@db:5432/ecommerce_db"        # <--для докер
-# postgresql — диалект СУБД (мы говорим SQLAlchemy, что работаем с Postgres).
-# +asyncpg — конкретный асинхронный драйвер. Это библиотека-переводчик, которая будет передавать байты в Postgres в асинхронном режиме.
-# ecommerce_user:xxxxxxxx — логин и скрытый пароль от базы данных.
-# localhost:5432/ecommerce_db — адрес сервера (localhost), стандартный порт Postgres (5432) и имя самой базы данных (ecommerce_db)
-
-# Извлекаем готовую строку подключения из .env. Заходит в ОЗУ системы, находит данные загруженные load_dotenv()  и отдает в код SQLAlchemy
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 # Создаём Engine (движок)
-async_engine = create_async_engine(DATABASE_URL, echo=True) # отвечает за асинхронное взаимодействие с базой данных
+async_engine = create_async_engine(DATABASE_URL, echo=True)
 
-# Настраиваем фабрику сеансов              движок      (истекает_при_фиксации=False)
-async_session_maker = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession) # <--будет выдавать готовую к работе сессию (Каждый раз, когда вы вызываете async_session_maker(), вы создаете новый, чистый экземпляр (объект) класса AsyncSession)
-# "AsyncSession", является асинхронным аналогом синхронной "Session"
-# async_engine — мы передаем фабрике наш асинхронный движок, чтобы сессии знали, через какой пул им работать с БД
-# class_=AsyncSession — жестко указывает фабрике, что генерировать нужно именно асинхронные сессии, а не стандартные синхронные
-# expire_on_commit=False (по умолчанию expire_on_commit=True) — самый важный асинхронный флаг. По умолчанию в SQLAlchemy после отправки данных в базу (commit) все данные из Python-объектов стираются, чтобы при следующем обращении к ним SQLAlchemy сходила в базу и взяла самую свежую информацию. В асинхронном коде это обращение произошло бы неявно (без await), что вызвало бы жесткую ошибку приложения (MissingGreenlet). Флаг False оставляет данные в памяти Python после коммита, предотвращая падение программы. (По умолчанию expire_on_commit=True и после вызова commit() все объекты, которые были изменены в сессии, помечаются как «устаревшие». Это означает, что при следующем обращении к этим объектам они будут автоматически перезагружены из базы данных)
+# Настраиваем фабрику сеансов
+async_session_maker = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
 
-# async_session_maker() - скрытно создает внутри себя объект класса "AsyncSession"
 
 # Определяем базовый (родительский) класс для всех ORM-моделей (совместим как с синхронным так и асинхронным кодом)
 class Base(DeclarativeBase):
     pass
 
-# Base - единая точка сбора всех таблиц вашего проекта
 
-
-
-# expire_on_commit=False - нужен, чтобы не делать запросы к бд после коммита
-# db.refresh() - чтобы загрузить в объект атрибуты которые сгенерировала бд (id, created_at и т.д.)
 
 
 
