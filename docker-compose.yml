@@ -1,0 +1,35 @@
+#version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ecommerce_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ecommerce_user
+      POSTGRES_PASSWORD: "0000"
+      POSTGRES_DB: ecommerce_db
+    ports:
+      - "5432:5432"
+    # === 1. ДОБАВЛЯЕМ СОХРАНЕНИЕ ДАННЫХ БАЗЫ НА ЖЕСТКИЙ ДИСК ===
+    volumes:
+      - pg_ecommerce_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    container_name: fastapi_app
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://ecommerce_user:0000@db:5432/ecommerce_db
+    depends_on:
+      - db
+
+# === 2. ОБЪЯВЛЯЕМ ТОМ ХРАНИЛИЩА (В САМОМ НИЗУ ФАЙЛА) ===
+volumes:
+  pg_ecommerce_data:
+

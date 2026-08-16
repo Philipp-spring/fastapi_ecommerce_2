@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+asyncpg
+sqlalchemy
+alembic
+greenlet
+pydantic[email]
+passlib
+bcrypt==4.0.1
+PyJWT
+python-dotenv
+python-multipart
+loguru
